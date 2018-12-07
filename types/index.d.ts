@@ -1,8 +1,9 @@
 import Vue, { PluginFunction } from "vue";
 
-export interface IAsyncComputedOptions {
-	errorHandler?: (error: string | Error) => void;
+interface IAsyncComputedOptions {
+	errorHandler?: (error: string[]) => void;
 	useRawError?: boolean;
+	default?: any;
 }
 
 export default class AsyncComputed {
@@ -11,7 +12,7 @@ export default class AsyncComputed {
 	static version: string;
 }
 
-type AsyncComputedGetter<T> = () => Promise<T>;
+type AsyncComputedGetter<T> = () => (Promise<T> | T);
 interface IAsyncComputedProperty<T> {
 	default?: T | (() => T);
 	get: AsyncComputedGetter<T>;
