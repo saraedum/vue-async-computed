@@ -17,7 +17,7 @@
   </a>
 
   <a href="https://npmjs.org/package/vue-async-computed">
-    <img src="http://img.shields.io/npm/dm/vue-async-computed.svg?style=flat-square"
+    <img src="https://img.shields.io/npm/dm/vue-async-computed.svg?style=flat-square"
          alt="Downloads">
   </a>
 
@@ -31,8 +31,6 @@
          alt="License">
   </a>
 </p>
-
-**This plugin is now Vue 2.0 compatible!**
 
 With this plugin, you can have computed properties in Vue that are computed asynchronously.
 
@@ -49,7 +47,7 @@ new Vue({
       return Vue.http.get('/get-username-by-id/' + this.userId)
         // This assumes that this endpoint will send us a response
         // that contains something like this:
-        // { 
+        // {
         //   "username": "username-goes-here"
         // }
         .then(response => response.data.username)
@@ -98,11 +96,11 @@ Alternately, you can link it directly from a CDN:
 
 ```html
 <script src="https://unpkg.com/vue-async-computed"></script>
-<!-- 
+<!--
   That will always point to the latest version of vue-async-computed.
   You probably want to instead pin it to a specific version:
 -->
-<script src="https://unpkg.com/vue-async-computed@3.5.0"></script>
+<script src="https://unpkg.com/vue-async-computed@3.7.0"></script>
 ```
 
 When used with a module system such as `webpack` or `browserify`, you need to explicitly install `vue-async-computed` via `Vue.use()`:
@@ -133,7 +131,7 @@ Vue.use(AsyncComputed)
    Vue instance as they resolve. Just as with normal computed
    properties, if the data the property depends on changes
    then the property is re-run automatically.
-   
+
    You can almost completely ignore the fact that behind the
    scenes they are asynchronous. The one thing to remember is
    that until a asynchronous property's promise resolves
@@ -185,7 +183,7 @@ new Vue({
         return Vue.http.get('/post/' + this.postId)
           .then(response => response.data.postContent)
        },
-       // The computed proporty `blogPostContent` will have 
+       // The computed proporty `blogPostContent` will have
        // the value 'Loading...' until the first time the promise
        // returned from the `get` function resolves.
        default: 'Loading...'
@@ -236,9 +234,9 @@ Just like normal computed properties, async computed properties keep track of th
 recalculated if those dependencies change. But often you'll have an async computed property you'll want to run again
 without any of its (local) dependencies changing, such as for instance the data may have changed in the database.
 
-You can set up a `watch` function, whose purpose is to set up listeners on additional dependencies. Your async computed
-property will then be recalculated also if any of the watched dependencies change, in addition to the real dependencies
-the property itself has:
+You can set up a `watch` property, listing the additional dependencies to watch.
+Your async computed property will then be recalculated also if any of the watched
+dependencies change, in addition to the real dependencies the property itself has:
 ```js
 
 new Vue({
@@ -255,13 +253,12 @@ new Vue({
         return Vue.http.get('/post/' + this.postId)
           .then(response => response.data.postContent)
       },
-      watch () {
-        this.timesPostHasBeenUpdated
-      }
+      watch: ['timesPostHasBeenUpdated']
     }
   }
 }
 ```
+Just like with Vue's normal `watch`, you can use a dotted path in order to watch a nested property. For example, `watch: ['a.b.c', 'd.e']` would declare a dependancy on `this.a.b.c` and on `this.d.e`.
 
 You can trigger re-computation of an async computed property manually, e.g. to re-try if an error occured during evaluation. This should be avoided if you are able to achieve the same result using a watched property.
 
@@ -348,7 +345,7 @@ new Vue({
 
 ## Computation status
 
-For each async comptued property, an object is added to `$asyncComputed` that contains information about the current computation state of that object. This object contains the following properties:
+For each async computed property, an object is added to `$asyncComputed` that contains information about the current computation state of that object. This object contains the following properties:
 
 ```js
 {
@@ -393,10 +390,14 @@ new Vue({
 
 By default, in case of a rejected promise in an async computed property, vue-async-computed will take care of logging the error for you.
 
-If you want to use a custom logging function, the plugin takes an `errorHandler` option, which should be the function you want called with the error information. By default, it will be called with the error's stack trace as an argument, but if you want the raw error itself you can set the
-`useRawError` option to `true`.
+If you want to use a custom logging function, the plugin takes an `errorHandler`
+option, which should be the function you want called with the error information.
+By default, it will be called with only the error's stack trace as an argument,
+but if you register the `errorHandler` with `useRawError` set to `true` the
+function will receive the raw error, a reference to the `Vue` instance that
+threw the error and the error's stack trace.
 
-For example: 
+For example:
 
 ```js
 Vue.use(AsyncComputed, {
@@ -410,11 +411,11 @@ Vue.use(AsyncComputed, {
 // Or with `useRawError`:
 Vue.use(AsyncComputed, {
   useRawError: true,
-  errorHandler (err) {
+  errorHandler (err, vm, stack) {
     console.log('An error occurred!')
     console.log('The error message was: ' + err.msg)
     console.log('And the stack trace was:')
-    console.log(err.stack)
+    console.log(stack)
   }
 )
 ```
@@ -423,18 +424,4 @@ You can pass `false` as the `errorHandler` in order to silently ignore rejected 
 
 ## License
 
-MIT © [Benjamin Fox](http://github.com/foxbenjaminfox)
-
-[npm-url]: https://npmjs.org/package/vue-async-computed
-[npm-image]: https://img.shields.io/npm/v/vue-async-computed.svg?style=flat-square
-
-[travis-url]: https://travis-ci.org/foxbenjaminfox/vue-async-computed
-[travis-image]: https://img.shields.io/travis/foxbenjaminfox/vue-async-computed.svg?style=flat-square
-
-[coveralls-url]: https://coveralls.io/r/foxbenjaminfox/vue-async-computed
-[coveralls-image]: https://img.shields.io/coveralls/foxbenjaminfox/vue-async-computed.svg?style=flat-square
-
-[depstat-url]: https://david-dm.org/foxbenjaminfox/vue-async-computed
-[depstat-image]: https://david-dm.org/foxbenjaminfox/vue-async-computed.svg?style=flat-square
-
-[download-badge]: http://img.shields.io/npm/dm/vue-async-computed.svg?style=flat-square
+MIT © [Benjamin Fox](https://github.com/foxbenjaminfox)

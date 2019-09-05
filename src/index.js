@@ -6,9 +6,10 @@ import {
   silentGetLazy,
   silentSetLazy,
 } from './lazy'
+import { getWatchedGetter } from './watch'
+import { getGetterWithShouldUpdate, shouldNotUpdate } from './shouldUpdate'
 
 const prefix = '_async_computed$'
-const DidNotUpdate = typeof Symbol === 'function' ? Symbol('did-not-update') : {}
 
 const AsyncComputed = {
   install (Vue, pluginOptions) {
@@ -19,10 +20,18 @@ const AsyncComputed = {
       .asyncComputed = Vue.config.optionMergeStrategies.computed
 
     Vue.mixin({
+      data () {
+        return {
+          _asyncComputed: {},
+        }
+      },
+      computed: {
+        $asyncComputed () {
+          return this.$data._asyncComputed
+        }
+      },
       beforeCreate () {
-        const optionData = this.$options.data
         const asyncComputed = this.$options.asyncComputed || {}
-        this.$asyncComputed = {}
 
         for (const key in this.$options.computed) {
           if (this.$options.computed[key].asynchronous) {
@@ -35,30 +44,12 @@ const AsyncComputed = {
 
         this.$options.asyncComputed = asyncComputed
 
-        if (!this.$options.computed) this.$options.computed = {}
-
         for (const key in asyncComputed) {
-          const getter = getterFn(key, this.$options.asyncComputed[key])
+          const getter = getterFn(key, asyncComputed[key])
           this.$options.computed[prefix + key] = getter
         }
 
-        this.$options.data = function vueAsyncComputedInjectedDataFn () {
-          const data = (
-            (typeof optionData === 'function')
-              ? optionData.call(this)
-              : optionData
-          ) || {}
-          for (const key in asyncComputed) {
-            const item = this.$options.asyncComputed[key]
-            if (isComputedLazy(item)) {
-              initLazy(data, key)
-              this.$options.computed[key] = makeLazyComputed(key)
-            } else {
-              data[key] = null
-            }
-          }
-          return data
-        }
+        this.$options.data = initDataWithAsyncComputed(this.$options)
       },
       created () {
         for (const key in this.$options.asyncComputed || {}) {
@@ -72,60 +63,82 @@ const AsyncComputed = {
         }
 
         for (const key in this.$options.asyncComputed || {}) {
-          let promiseId = 0
-          const watcher = newPromise => {
-            const thisPromise = ++promiseId
-
-            if (newPromise === DidNotUpdate) {
-              return
-            }
-
-            if (!newPromise || !newPromise.then) {
-              newPromise = Promise.resolve(newPromise)
-            }
-            setAsyncState(this.$asyncComputed[key], 'updating')
-
-            newPromise.then(value => {
-              if (thisPromise !== promiseId) return
-              setAsyncState(this.$asyncComputed[key], 'success')
-              this[key] = value
-            }).catch(err => {
-              if (thisPromise !== promiseId) return
-
-              setAsyncState(this.$asyncComputed[key], 'error')
-              this.$asyncComputed[key].exception = err
-              if (pluginOptions.errorHandler === false) return
-
-              const handler = (pluginOptions.errorHandler === undefined)
-                ? console.error.bind(console, 'Error evaluating async computed property:')
-                : pluginOptions.errorHandler
-
-              if (pluginOptions.useRawError) {
-                handler(err)
-              } else {
-                handler(err.stack)
-              }
-            })
-          }
-          this.$asyncComputed[key] = {
-            exception: null,
-            update: () => {
-              watcher(getterOnly(this.$options.asyncComputed[key])())
-            }
-          }
-          setAsyncState(this.$asyncComputed[key], 'updating')
-          this.$watch(prefix + key, watcher, { immediate: true })
+          handleAsyncComputedPropetyChanges(this, key, pluginOptions, Vue)
         }
       }
     })
   }
 }
+function handleAsyncComputedPropetyChanges (vm, key, pluginOptions, Vue) {
+  let promiseId = 0
+  const watcher = newPromise => {
+    const thisPromise = ++promiseId
 
-function setAsyncState (stateObject, state) {
-  stateObject.state = state
-  stateObject.updating = state === 'updating'
-  stateObject.error = state === 'error'
-  stateObject.success = state === 'success'
+    if (shouldNotUpdate(newPromise)) return
+
+    if (!newPromise || !newPromise.then) {
+      newPromise = Promise.resolve(newPromise)
+    }
+    setAsyncState(vm, key, 'updating')
+
+    newPromise.then(value => {
+      if (thisPromise !== promiseId) return
+      setAsyncState(vm, key, 'success')
+      vm[key] = value
+    }).catch(err => {
+      if (thisPromise !== promiseId) return
+
+      setAsyncState(vm, key, 'error')
+      Vue.set(vm.$data._asyncComputed[key], 'exception', err)
+      if (pluginOptions.errorHandler === false) return
+
+      const handler = (pluginOptions.errorHandler === undefined)
+        ? console.error.bind(console, 'Error evaluating async computed property:')
+        : pluginOptions.errorHandler
+
+      if (pluginOptions.useRawError) {
+        handler(err, vm, err.stack)
+      } else {
+        handler(err.stack)
+      }
+    })
+  }
+  Vue.set(vm.$data._asyncComputed, key, {
+    exception: null,
+    update: () => {
+      watcher(getterOnly(vm.$options.asyncComputed[key]).apply(vm))
+    }
+  })
+  setAsyncState(vm, key, 'updating')
+  vm.$watch(prefix + key, watcher, { immediate: true })
+}
+
+function initDataWithAsyncComputed (options) {
+  const optionData = options.data
+  const asyncComputed = options.asyncComputed || {}
+
+  return function vueAsyncComputedInjectedDataFn (vm) {
+    const data = ((typeof optionData === 'function')
+      ? optionData.call(this, vm)
+      : optionData) || {}
+    for (const key in asyncComputed) {
+      const item = this.$options.asyncComputed[key]
+      if (isComputedLazy(item)) {
+        initLazy(data, key)
+        this.$options.computed[key] = makeLazyComputed(key)
+      } else {
+        data[key] = null
+      }
+    }
+    return data
+  }
+}
+
+function setAsyncState (vm, stateObject, state) {
+  vm.$set(vm.$data._asyncComputed[stateObject], 'state', state)
+  vm.$set(vm.$data._asyncComputed[stateObject], 'updating', state === 'updating')
+  vm.$set(vm.$data._asyncComputed[stateObject], 'error', state === 'error')
+  vm.$set(vm.$data._asyncComputed[stateObject], 'success', state === 'success')
 }
 
 function getterOnly (fn) {
@@ -140,21 +153,11 @@ function getterFn (key, fn) {
   let getter = fn.get
 
   if (fn.hasOwnProperty('watch')) {
-    const previousGetter = getter
-    getter = function getter () {
-      fn.watch.call(this)
-      return previousGetter.call(this)
-    }
+    getter = getWatchedGetter(fn)
   }
 
   if (fn.hasOwnProperty('shouldUpdate')) {
-    const previousGetter = getter
-    getter = function getter () {
-      if (fn.shouldUpdate.call(this)) {
-        return previousGetter.call(this)
-      }
-      return DidNotUpdate
-    }
+    getter = getGetterWithShouldUpdate(fn, getter)
   }
 
   if (isComputedLazy(fn)) {
