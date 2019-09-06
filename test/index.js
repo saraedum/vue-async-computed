@@ -892,6 +892,54 @@ test("$asyncComputed[name].update triggers re-evaluation", t => {
   })
 })
 
+test("$asyncComputed[name].update has the correct execution context", t => {
+  t.plan(8)
+  let addedValue = 1
+  const vm = new Vue({
+    data () {
+      return {
+        valueToReturn: 1,
+      }
+    },
+    asyncComputed: {
+      a () {
+        return new Promise(resolve => {
+          resolve(this.valueToReturn + addedValue)
+        })
+      },
+      b: {
+        get () {
+          return new Promise(resolve => {
+            resolve(this.valueToReturn + addedValue)
+          })
+        },
+      },
+    },
+  })
+
+  Vue.nextTick(() => {
+    //  case 1: a is a function
+    t.equal(vm.a, 2)
+    t.equal(vm.$asyncComputed['a'].state, 'success')
+    //  case 2: b is an object with a getter function
+    t.equal(vm.b, 2)
+    t.equal(vm.$asyncComputed['b'].state, 'success')
+
+    addedValue = 4
+
+    vm.$asyncComputed['a'].update()
+    t.equal(vm.$asyncComputed['a'].state, 'updating')
+
+    vm.$asyncComputed['b'].update()
+    t.equal(vm.$asyncComputed['b'].state, 'updating')
+
+    Vue.nextTick(() => {
+      t.equal(vm.a, 5)
+      t.equal(vm.b, 5)
+    })
+  })
+})
+
 test("Plain components with neither `data` nor `asyncComputed` still work (issue #50)", t => {
   t.plan(1)
   const vm = new Vue({
@@ -902,4 +950,184 @@ test("Plain components with neither `data` nor `asyncComputed` still work (issue
     }
   })
   t.equal(vm.a, 1)
+})
+
+test('Data of component still work as function and got vm', t => {
+  t.plan(1)
+  let _vmContext = null
+  const vm = new Vue({
+    data (vmContext) {
+      _vmContext = vmContext
+    },
+    asyncComputed: {
+      async a () {
+        return Promise.resolve(1)
+      },
+    },
+
+  })
+  t.equal(vm, _vmContext)
+})
+
+test("Watch as a function", t => {
+  t.plan(4)
+  let i = 0
+  const vm = new Vue({
+    data: {
+      y: 2,
+      obj: {
+        t: 0
+      }
+    },
+    asyncComputed: {
+      z: {
+        get () {
+          return Promise.resolve(i + this.y)
+        },
+        watch () {
+          // eslint-disable-next-line no-unused-expressions
+          this.obj.t
+        }
+      }
+    }
+  })
+  t.equal(vm.z, null)
+  Vue.nextTick(() => {
+    t.equal(vm.z, 2)
+    i++
+    vm.obj.t--
+    Vue.nextTick(() => {
+      // This tick, Vue registers the change
+      // in the watcher, and reevaluates
+      // the getter function
+      t.equal(vm.z, 2)
+      Vue.nextTick(() => {
+        // Now in this tick the promise has
+        // resolved, and z is 3.
+        t.equal(vm.z, 3)
+      })
+    })
+  })
+})
+
+test("Watchers as array with nested path rerun the computation when a value changes", t => {
+  t.plan(4)
+  let i = 0
+  const vm = new Vue({
+    data: {
+      y: 2,
+      obj: {
+        t: 0
+      }
+    },
+    asyncComputed: {
+      z: {
+        get () {
+          return Promise.resolve(i + this.y)
+        },
+        watch: ['obj.t']
+      }
+    }
+  })
+  t.equal(vm.z, null)
+  Vue.nextTick(() => {
+    t.equal(vm.z, 2)
+    i++
+    vm.obj.t--
+    Vue.nextTick(() => {
+      // This tick, Vue registers the change
+      // in the watcher, and reevaluates
+      // the getter function
+      t.equal(vm.z, 2)
+      Vue.nextTick(() => {
+        // Now in this tick the promise has
+        // resolved, and z is 3.
+        t.equal(vm.z, 3)
+      })
+    })
+  })
+})
+
+test("Watch as array with more then one value", t => {
+  t.plan(5)
+  let i = 0
+  const vm = new Vue({
+    data: {
+      y: 2,
+      obj: {
+        t: 0
+      },
+      r: 0
+    },
+    asyncComputed: {
+      z: {
+        get () {
+          return Promise.resolve(i + this.y)
+        },
+        watch: ['obj.t', 'r']
+      }
+    }
+  })
+  t.equal(vm.z, null)
+  Vue.nextTick(() => {
+    t.equal(vm.z, 2)
+    i++
+    // checking for nested property
+    vm.obj.t--
+    Vue.nextTick(() => {
+      // This tick, Vue registers the change
+      // in the watcher, and reevaluates
+      // the getter function
+      t.equal(vm.z, 2)
+      Vue.nextTick(() => {
+        // Now in this tick the promise has
+        // resolved, and z is 3.
+        t.equal(vm.z, 3)
+
+        i++
+        // one level and multiple watchers
+        vm.r--
+        Vue.nextTick(() => {
+          Vue.nextTick(() => {
+            t.equal(vm.z, 4)
+          })
+        })
+      })
+    })
+  })
+})
+
+test("$asyncComputed[name].state resolves to 'success' even if the computed value is 0 (issue #75)", t => {
+  t.plan(13)
+  const vm = new Vue({
+    computed: {
+      isUpdating () {
+        return this.$asyncComputed.a.updating
+      }
+    },
+    asyncComputed: {
+      a: {
+        async get () {
+          return 0
+        },
+        default: null
+      }
+    }
+  })
+  t.equal(vm.$asyncComputed['a'].state, 'updating')
+  t.equal(vm.$asyncComputed['a'].updating, true)
+  t.equal(vm.$asyncComputed['a'].success, false)
+  t.equal(vm.$asyncComputed['a'].error, false)
+  t.equal(vm.$asyncComputed['a'].exception, null)
+  t.equal(vm.isUpdating, true)
+
+  Vue.nextTick(() => {
+    t.equal(vm.a, 0)
+    t.equal(vm.$asyncComputed['a'].state, 'success')
+    t.equal(vm.$asyncComputed['a'].updating, false)
+    t.equal(vm.$asyncComputed['a'].success, true)
+    t.equal(vm.$asyncComputed['a'].error, false)
+    t.equal(vm.$asyncComputed['a'].exception, null)
+    t.equal(vm.isUpdating, false)
+  })
 })

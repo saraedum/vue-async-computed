@@ -1,9 +1,8 @@
 import Vue, { PluginFunction } from "vue";
-
-export interface IAsyncComputedOptions {
-	errorHandler?: (error: string | Error) => void;
+	
+interface IAsyncComputedOptions {
+	errorHandler?: (error: string[]) => void;
 	useRawError?: boolean;
-	default?: any;
 }
 
 export default class AsyncComputed {
@@ -12,11 +11,23 @@ export default class AsyncComputed {
 	static version: string;
 }
 
+type AsyncComputedGetter<T> = () => (Promise<T> | T);
+interface IAsyncComputedProperty<T> {
+	default?: T | (() => T);
+	get: AsyncComputedGetter<T>;
+	watch?: () => void;
+	shouldUpdate?: () => boolean;
+	lazy?: boolean;
+}
+
+interface IAsyncComputedProperties {
+	[K: string]: AsyncComputedGetter<any> | IAsyncComputedProperty<any>;
+}
+
 declare module "vue/types/options" {
-	interface ComputedOptions<T> {
-		asynchronous?: boolean;
-		default: T extends Promise<infer S> ? S : undefined;
-		lazy: T extends Promise<any> ? boolean : undefined;
+	// tslint:disable-next-line:interface-name
+	interface ComponentOptions<V extends Vue> {
+		asyncComputed?: IAsyncComputedProperties;
 	}
 }
 
